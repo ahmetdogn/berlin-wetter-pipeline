@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>berlin wetter</title>
+<style>
+  body {
+    margin: 0;
+    padding: 40px 24px;
+    background: #111;
+    color: #ddd;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  h1 { font-weight: 600; font-size: 22px; margin: 0 0 4px; }
+  p.sub { color: #888; margin: 0 0 40px; font-size: 14px; }
+  .station { margin-bottom: 32px; }
+  .station h2 { font-size: 14px; font-weight: 500; margin: 0 0 8px; color: #bbb; }
+  svg { width: 100%; height: 96px; display: block; shape-rendering: crispEdges; }
+  svg rect.day:hover { opacity: .75; }
+  .axis { display: flex; justify-content: space-between; font-size: 11px; color: #666; margin-top: 4px; }
+  .legend { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #888; margin-top: 48px; }
+  .legend .bar { display: flex; height: 10px; width: 240px; }
+  .legend .bar span { flex: 1; }
+  .rain { color: #6baed6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>berlin wetter</h1>
+  <p class="sub">ein streifen pro tag, farbe = durchschnittstemperatur, <span class="rain">blaue balken</span> = niederschlag</p>
+
+  {% if not stations %}
+    <p>noch keine daten, laeuft der DAG schon?</p>
+  {% endif %}
+
+  {% for name, days in stations %}
+  <div class="station">
+    <h2>{{ name }}</h2>
+    <svg viewBox="0 0 {{ days|length * 10 }} 62" preserveAspectRatio="none">
+      {% for d in days %}
+        <rect class="day" x="{{ loop.index0 * 10 }}" y="0" width="10" height="40" fill="{{ d.color }}">
+          <title>{{ d.day }}  {{ d.tavg }} °C  ({{ d.tmin }} bis {{ d.tmax }})  {{ d.rain }} mm</title>
+        </rect>
+        <rect x="{{ loop.index0 * 10 + 2 }}" y="{{ 44 + 18 - d.rain_h }}" width="6" height="{{ d.rain_h }}" fill="#6baed6"/>
+      {% endfor %}
+    </svg>
+    <div class="axis"><span>{{ days[0].day }}</span><span>{{ days[-1].day }}</span></div>
+  </div>
+  {% endfor %}
+
+  {% if stations %}
+  <div class="legend">
+    <span>{{ "%.1f"|format(lo) }} °C</span>
+    <div class="bar">{% for c in colors %}<span style="background: {{ c }}"></span>{% endfor %}</div>
+    <span>{{ "%.1f"|format(hi) }} °C</span>
+  </div>
+  {% endif %}
+</main>
+</body>
+</html>

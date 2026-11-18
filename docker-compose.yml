@@ -1,0 +1,104 @@
+x-airflow: &airflow
+  image: apache/airflow:2.10.5-python3.11
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW_CONN_WAREHOUSE: postgres://${WH_USER}:${WH_PASSWORD}@warehouse:5432/${WH_DB}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./sql:/opt/airflow/sql
+    - logs:/opt/airflow/logs
+  depends_on:
+    airflow-db:
+      condition: service_healthy
+    warehouse:
+      condition: service_healthy
+
+services:
+  airflow-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+
+  warehouse:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${WH_USER}
+      POSTGRES_PASSWORD: ${WH_PASSWORD}
+      POSTGRES_DB: ${WH_DB}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - warehouse:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${WH_USER}"]
+      interval: 5s
+      retries: 10
+
+  airflow-init:
+    <<: *airflow
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create -u $${AIRFLOW_ADMIN_USER} -p $${AIRFLOW_ADMIN_PASSWORD} -f admin -l admin -r Admin -e admin@example.org || true
+    restart: "no"
+
+  webserver:
+    <<: *airflow
+    command: webserver
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  scheduler:
+    <<: *airflow
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  ui:
+    build: ./ui
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 100
+    environment:
+      DB_HOST: warehouse
+      DB_PORT: 5432
+      DB_NAME: ${WH_DB}
+      DB_USER: ${WH_USER}
+      DB_PASSWORD: ${WH_PASSWORD}
+    ports:
+      - "${UI_PORT:-8050}:8050"
+    depends_on:
+      warehouse:
+        condition: service_healthy
+
+volumes:
+  airflow-db:
+  warehouse:
+  logs:
